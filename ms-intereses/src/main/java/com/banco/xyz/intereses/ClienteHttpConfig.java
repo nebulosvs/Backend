@@ -45,21 +45,33 @@ public class ClienteHttpConfig {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static String tokenDeServicio(RestClient tokens, String tokenUri, AtomicReference<String> token,
+	private static String tokenDeServicio(
+			RestClient tokens,
+			String tokenUri,
+			AtomicReference<String> token,
 			AtomicLong expira) {
+
 		long ahora = System.currentTimeMillis();
+
 		if (token.get() != null && ahora < expira.get()) {
 			return token.get();
 		}
-		Map<String, Object> respuesta = tokens.post().uri(tokenUri)
-				.headers(headers -> headers.setBasicAuth("servicio", "servicio123"))
+
+		Map<String, Object> respuesta = tokens.post()
+				.uri(tokenUri)
+				.headers(headers -> headers.setBasicAuth("cliente-interno", "interno-secret"))
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
-				.body("grant_type=client_credentials")
+				.body("grant_type=client_credentials&scope=servicios.internal")
 				.retrieve()
 				.body(Map.class);
+
 		token.set(String.valueOf(respuesta.get("access_token")));
+
 		Number segundos = (Number) respuesta.get("expires_in");
-		expira.set(ahora + Math.max(30, segundos.intValue() - 30) * 1000L);
+
+		expira.set(
+				ahora + Math.max(30, segundos.intValue() - 30) * 1000L);
+
 		return token.get();
 	}
 
