@@ -41,26 +41,43 @@ public class AuthServerConfig {
 	@Bean
 	@Order(1)
 	SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
-		OAuth2AuthorizationServerConfigurer authorizationServer = new OAuth2AuthorizationServerConfigurer();
+
+		OAuth2AuthorizationServerConfigurer authorizationServer =
+				new OAuth2AuthorizationServerConfigurer();
+
 		http.securityMatcher(authorizationServer.getEndpointsMatcher())
-				.with(authorizationServer,
-						server -> server.oidc(org.springframework.security.config.Customizer.withDefaults()))
-				.authorizeHttpRequests(auth -> auth.anyRequest().authenticated());
+				.with(
+						authorizationServer,
+						server -> server.oidc(
+								org.springframework.security.config.Customizer.withDefaults()))
+				.authorizeHttpRequests(
+						auth -> auth.anyRequest().authenticated());
+
 		return http.build();
 	}
 
 	@Bean
 	@Order(2)
 	SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+
 		http.securityMatcher("/actuator/**")
-				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+				.authorizeHttpRequests(
+						auth -> auth.anyRequest().permitAll());
+
 		return http.build();
 	}
 
 	@Bean
-	RegisteredClientRepository registeredClientRepository(PasswordEncoder encoder) {
+	RegisteredClientRepository registeredClientRepository(
+			PasswordEncoder encoder) {
 
 		TokenSettings jwt = TokenSettings.builder().build();
+
+		/*
+		 * ============================================================
+		 * CLIENTE WEB
+		 * ============================================================
+		 */
 
 		RegisteredClient clienteWeb = cliente(
 				"cliente-web",
@@ -71,6 +88,27 @@ public class AuthServerConfig {
 				"transacciones.read",
 				"intereses.read");
 
+		/*
+		 * ============================================================
+		 * CLIENTE MOBILE
+		 * ============================================================
+		 */
+
+		RegisteredClient clienteMobile = cliente(
+				"cliente-mobile",
+				"mobile-secret",
+				encoder,
+				jwt,
+				"cuentas.read",
+				"transacciones.read",
+				"intereses.read");
+
+		/*
+		 * ============================================================
+		 * CLIENTE ATM
+		 * ============================================================
+		 */
+
 		RegisteredClient clienteAtm = cliente(
 				"cliente-atm",
 				"atm-secret",
@@ -78,6 +116,12 @@ public class AuthServerConfig {
 				jwt,
 				"cuentas.read",
 				"retiros.write");
+
+		/*
+		 * ============================================================
+		 * CLIENTE INTERNO ENTRE MICROSERVICIOS
+		 * ============================================================
+		 */
 
 		RegisteredClient clienteInterno = cliente(
 				"cliente-interno",
@@ -88,6 +132,7 @@ public class AuthServerConfig {
 
 		return new InMemoryRegisteredClientRepository(
 				clienteWeb,
+				clienteMobile,
 				clienteAtm,
 				clienteInterno);
 	}
@@ -99,51 +144,88 @@ public class AuthServerConfig {
 
 	@Bean
 	JWKSource<SecurityContext> jwkSource() throws Exception {
-		KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+
+		KeyPairGenerator generator =
+				KeyPairGenerator.getInstance("RSA");
+
 		generator.initialize(2048);
+
 		KeyPair keyPair = generator.generateKeyPair();
-		RSAKey rsaKey = new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
-				.privateKey((RSAPrivateKey) keyPair.getPrivate())
+
+		RSAKey rsaKey = new RSAKey.Builder(
+				(RSAPublicKey) keyPair.getPublic())
+				.privateKey(
+						(RSAPrivateKey) keyPair.getPrivate())
 				.keyID(UUID.randomUUID().toString())
 				.build();
-		return new ImmutableJWKSet<>(new JWKSet(rsaKey));
+
+		return new ImmutableJWKSet<>(
+				new JWKSet(rsaKey));
 	}
 
 	@Bean
 	OAuth2TokenCustomizer<JwtEncodingContext> jwtCustomizer() {
+
 		return context -> {
-			if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())) {
+
+			if (OAuth2TokenType.ACCESS_TOKEN.equals(
+					context.getTokenType())) {
+
 				var scopes = context.getAuthorizedScopes();
+
 				if (scopes == null || scopes.isEmpty()) {
-					scopes = context.getRegisteredClient().getScopes();
+					scopes = context
+							.getRegisteredClient()
+							.getScopes();
 				}
-				context.getClaims().claim("scope", scopes);
+
+				context.getClaims()
+						.claim("scope", scopes);
 			}
 		};
 	}
 
 	@Bean
-	JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
-		return org.springframework.security.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration
+	JwtDecoder jwtDecoder(
+			JWKSource<SecurityContext> jwkSource) {
+
+		return org.springframework.security.config.annotation.web.configuration
+				.OAuth2AuthorizationServerConfiguration
 				.jwtDecoder(jwkSource);
 	}
 
 	@Bean
-	AuthorizationServerSettings authorizationServerSettings(@Value("${bank.oauth.issuer}") String issuer) {
-		return AuthorizationServerSettings.builder().issuer(issuer).build();
+	AuthorizationServerSettings authorizationServerSettings(
+			@Value("${bank.oauth.issuer}") String issuer) {
+
+		return AuthorizationServerSettings.builder()
+				.issuer(issuer)
+				.build();
 	}
 
-	private static RegisteredClient cliente(String id, String secret, PasswordEncoder encoder, TokenSettings jwt,
+	private static RegisteredClient cliente(
+			String id,
+			String secret,
+			PasswordEncoder encoder,
+			TokenSettings jwt,
 			String... scopes) {
-		RegisteredClient.Builder builder = RegisteredClient.withId(UUID.randomUUID().toString())
-				.clientId(id)
-				.clientSecret(encoder.encode(secret))
-				.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-				.authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
-				.tokenSettings(jwt);
+
+		RegisteredClient.Builder builder =
+				RegisteredClient
+						.withId(UUID.randomUUID().toString())
+						.clientId(id)
+						.clientSecret(
+								encoder.encode(secret))
+						.clientAuthenticationMethod(
+								ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+						.authorizationGrantType(
+								AuthorizationGrantType.CLIENT_CREDENTIALS)
+						.tokenSettings(jwt);
+
 		for (String scope : scopes) {
 			builder.scope(scope);
 		}
+
 		return builder.build();
 	}
 }

@@ -23,62 +23,147 @@ public class AtmBffController {
 	private final BankDataQueryService service;
 	private final AtmPinService pinService;
 
-	public AtmBffController(BankDataQueryService service, AtmPinService pinService) {
+	public AtmBffController(
+			BankDataQueryService service,
+			AtmPinService pinService) {
+
 		this.service = service;
 		this.pinService = pinService;
 	}
 
 	@GetMapping("/ping")
 	public AtmPingResponse ping() {
-		return new AtmPingResponse("ATM", "OK", new String[] { "consulta-saldo", "retiro" });
+
+		return new AtmPingResponse(
+				"ATM",
+				"OK",
+				new String[] {
+						"consulta-saldo",
+						"retiro"
+				});
 	}
 
 	@GetMapping("/saldo/{id}")
-	public ResponseEntity<?> saldo(@PathVariable long id,
-			@RequestHeader(value = "X-ATM-PIN", required = false) String pin) {
+	public ResponseEntity<?> saldo(
+			@PathVariable long id,
+			@RequestHeader(
+					value = "X-ATM-PIN",
+					required = false) String pin) {
+
 		if (!pinService.isValidPin(id, pin)) {
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-					.body(new AtmErrorResponse("ATM", "PIN invalido para la cuenta"));
+
+			return ResponseEntity
+					.status(HttpStatus.UNAUTHORIZED)
+					.body(new AtmErrorResponse(
+							"ATM",
+							"PIN invalido para la cuenta"));
 		}
+
 		return service.accountById(id)
-				.<ResponseEntity<?>>map(account -> ResponseEntity
-						.ok(new AtmBalanceResponse("ATM", account.id(), account.cuentaId(), account.saldoFinal(), "CLP")))
-				.orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-						.body(new AtmErrorResponse("ATM", "Cuenta no encontrada")));
+				.<ResponseEntity<?>>map(account ->
+						ResponseEntity.ok(
+								new AtmBalanceResponse(
+										"ATM",
+										account.id(),
+										account.cuentaId(),
+										account.saldoFinal(),
+										"CLP")))
+				.orElseGet(() ->
+						ResponseEntity
+								.status(HttpStatus.NOT_FOUND)
+								.body(new AtmErrorResponse(
+										"ATM",
+										"Cuenta no encontrada")));
 	}
 
 	@PostMapping("/retiro")
-	public ResponseEntity<?> retiro(@RequestBody AtmWithdrawalRequest request,
-			@RequestHeader(value = "X-ATM-PIN", required = false) String pin) {
-		if (request == null || request.id() == null || request.monto() == null) {
-			return ResponseEntity.badRequest().body(new AtmErrorResponse("ATM", "id y monto son obligatorios"));
+	public ResponseEntity<?> retiro(
+			@RequestBody AtmWithdrawalRequest request,
+			@RequestHeader(
+					value = "X-ATM-PIN",
+					required = false) String pin) {
+
+		if (request == null
+				|| request.id() == null
+				|| request.monto() == null) {
+
+			return ResponseEntity
+					.badRequest()
+					.body(new AtmErrorResponse(
+							"ATM",
+							"id y monto son obligatorios"));
 		}
-		if (!pinService.isValidPin(request.id(), pin)) {
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-					.body(new AtmErrorResponse("ATM", "PIN invalido para la cuenta"));
+
+		if (!pinService.isValidPin(
+				request.id(),
+				pin)) {
+
+			return ResponseEntity
+					.status(HttpStatus.UNAUTHORIZED)
+					.body(new AtmErrorResponse(
+							"ATM",
+							"PIN invalido para la cuenta"));
 		}
+
 		try {
-			Withdrawal result = service.withdraw(request.id(), request.monto());
-			return ResponseEntity.ok(new AtmWithdrawalResponse("ATM", "RETIRO_OK", result));
+
+			Withdrawal result =
+					service.withdraw(
+							request.id(),
+							request.monto());
+
+			return ResponseEntity
+					.status(HttpStatus.ACCEPTED)
+					.body(new AtmWithdrawalResponse(
+							"ATM",
+							"RETIRO_SOLICITADO",
+							result));
+
 		} catch (IllegalArgumentException ex) {
-			return ResponseEntity.badRequest().body(new AtmErrorResponse("ATM", ex.getMessage()));
+
+			return ResponseEntity
+					.badRequest()
+					.body(new AtmErrorResponse(
+							"ATM",
+							ex.getMessage()));
+
 		} catch (IllegalStateException ex) {
-			return ResponseEntity.status(HttpStatus.CONFLICT).body(new AtmErrorResponse("ATM", ex.getMessage()));
+
+			return ResponseEntity
+					.status(HttpStatus.CONFLICT)
+					.body(new AtmErrorResponse(
+							"ATM",
+							ex.getMessage()));
 		}
 	}
 
-	public record AtmPingResponse(String canal, String estado, String[] operaciones) {
+	public record AtmPingResponse(
+			String canal,
+			String estado,
+			String[] operaciones) {
 	}
 
-	public record AtmBalanceResponse(String canal, long id, long cuentaId, BigDecimal saldoDisponible, String moneda) {
+	public record AtmBalanceResponse(
+			String canal,
+			long id,
+			String cuentaId,
+			BigDecimal saldoDisponible,
+			String moneda) {
 	}
 
-	public record AtmWithdrawalRequest(Long id, BigDecimal monto) {
+	public record AtmWithdrawalRequest(
+			Long id,
+			BigDecimal monto) {
 	}
 
-	public record AtmWithdrawalResponse(String canal, String operacion, Withdrawal data) {
+	public record AtmWithdrawalResponse(
+			String canal,
+			String operacion,
+			Withdrawal data) {
 	}
 
-	public record AtmErrorResponse(String canal, String error) {
+	public record AtmErrorResponse(
+			String canal,
+			String error) {
 	}
 }

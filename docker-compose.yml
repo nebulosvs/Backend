@@ -184,7 +184,26 @@ services:
     networks:
       - banco-network
 
-
+  # =========================================================
+  # BACKEND FOR FRONTEND
+  # Web / Mobile / ATM
+  # =========================================================
+  xyz-bff:
+    build: ./xyz-bff
+    environment:
+      BANK_BACKEND_BASE_URL: "http://api-gateway:8080"
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_BANK_AUTH_TOKEN_URI: "http://auth-server:9000/oauth2/token"
+    ports:
+      - "8443:8443"
+    depends_on:
+      auth-server:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - banco-network
+      
 # =========================================================
 # RED INTERNA
 # =========================================================
