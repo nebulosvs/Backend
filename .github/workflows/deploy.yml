@@ -38,6 +38,15 @@ jobs:
       - name: Build project with Maven
         run: mvn clean package -DskipTests
 
+      - name: Build Batch with Maven
+        working-directory: xyz
+        run: mvn clean package -DskipTests
+
+      - name: Verify Batch JAR
+        run: |
+          echo "Contenido de xyz/target:"
+          ls -la xyz/target
+
       # ========================================================
       # DOCKER HUB
       # ========================================================
