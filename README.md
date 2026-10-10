@@ -1,72 +1,97 @@
-# Backend III – Microservicios y Resiliencia con Spring Cloud
+# Banco XYZ – Evaluación Final Backend III
 
-Proyecto desarrollado para la actividad de **Semana 8 de Desarrollo Backend III (PBY2203)**.
+Proyecto desarrollado para la **Evaluación Final Transversal de Desarrollo Backend III (PBY2203)**.
 
-La solución implementa una arquitectura de microservicios para un sistema bancario, incorporando seguridad con **OAuth 2.0 y JWT**, descubrimiento de servicios con **Eureka**, configuración centralizada mediante **Spring Cloud Config**, resiliencia con **Resilience4j**, comunicación asíncrona mediante **JMS**, persistencia con **H2** y despliegue mediante **Docker y Docker Compose**.
+La solución moderniza parte de la plataforma legacy del Banco XYZ mediante una arquitectura distribuida basada en **Spring Boot, Spring Batch, Spring Cloud y microservicios**, incorporando Backend for Frontend (BFF), seguridad OAuth 2.0 y JWT, resiliencia con Resilience4j, comunicación asíncrona mediante JMS, persistencia en H2, contenerización con Docker y despliegue en AWS EC2.
+
+Además, el proyecto incorpora un flujo de integración y despliegue continuo mediante **GitHub Actions y Docker Hub**.
 
 ---
 
 ## 1. Objetivo
 
-Implementar una arquitectura distribuida basada en microservicios que permita:
+El objetivo del proyecto es modernizar procesos bancarios originalmente asociados a una plataforma legacy, implementando una arquitectura que permita mejorar la mantenibilidad, seguridad, resiliencia, integración y capacidad de despliegue del sistema.
 
+La solución implementada permite:
+
+- Migrar procesos legacy a Spring Batch.
+- Separar funcionalidades mediante microservicios.
+- Implementar BFF para los canales Web, Mobile y ATM.
 - Proteger los servicios mediante OAuth 2.0 y JWT.
 - Aplicar autorización mediante scopes.
-- Centralizar la configuración de los microservicios.
+- Centralizar configuraciones mediante Spring Cloud Config.
 - Registrar y descubrir servicios mediante Eureka.
-- Implementar patrones de resiliencia con Resilience4j.
+- Implementar tolerancia a fallos mediante Resilience4j.
 - Implementar comunicación asíncrona mediante JMS.
-- Aplicar una Saga con compensación para el procesamiento de retiros.
+- Aplicar el patrón Saga para el procesamiento distribuido de retiros.
+- Mantener idempotencia en el procesamiento de eventos.
 - Dockerizar los componentes de la solución.
-- Orquestar la infraestructura mediante Docker Compose.
+- Orquestar los servicios mediante Docker Compose.
+- Desplegar la infraestructura en AWS EC2.
+- Automatizar la construcción y despliegue mediante GitHub Actions.
 
 ---
 
 ## 2. Arquitectura general
 
-La solución está compuesta por los siguientes servicios:
+La solución está compuesta por los siguientes componentes:
 
-| Servicio | Puerto | Responsabilidad |
+| Componente | Puerto | Responsabilidad |
 |---|---:|---|
 | API Gateway | 8080 | Punto de entrada y enrutamiento hacia los microservicios |
-| ms-transacciones | 8081 | Gestión de transacciones y Saga de retiros |
-| ms-intereses | 8082 | Gestión y consulta de intereses |
-| ms-cuentas | 8083 | Gestión de cuentas y procesamiento de débitos |
+| ms-transacciones | 8081 | Consulta de transacciones y procesamiento de retiros |
+| ms-intereses | 8082 | Consulta y gestión de información de intereses |
+| ms-cuentas | 8083 | Consulta de cuentas y procesamiento de débitos |
 | Eureka Server | 8761 | Registro y descubrimiento de servicios |
 | Config Server | 8888 | Configuración centralizada |
 | Auth Server | 9000 | Autenticación OAuth 2.0 y emisión de JWT |
-| H2 Server | 9092 | Base de datos compartida |
-| Batch (`xyz`) | — | Inicialización y procesamiento de datos |
+| H2 Server | 9092 | Persistencia central de datos |
+| Spring Batch (`xyz`) | — | Procesamiento e inicialización de datos bancarios |
+| BFF (`xyz-bff`) | 8443 | Backend especializado para Web, Mobile y ATM |
 
-Flujo general:
+### Flujo general
 
 ```text
-                        Cliente
-                           |
-                           v
-                    +-------------+
-                    | API Gateway |
-                    |    :8080    |
-                    +------+------+
-                           |
-             +-------------+-------------+
-             |             |             |
-             v             v             v
-       ms-cuentas     ms-intereses   ms-transacciones
-         :8083           :8082           :8081
-             |             |             |
-             +-------------+-------------+
-                           |
-                      H2 Server
-                        :9092
+                    Clientes
+            Web / Mobile / ATM
+                      |
+                      v
+              +---------------+
+              |    xyz-bff    |
+              | HTTPS :8443   |
+              +-------+-------+
+                      |
+                 OAuth 2.0
+                      |
+                      v
+              +---------------+
+              |  API Gateway  |
+              |     :8080     |
+              +-------+-------+
+                      |
+        +-------------+-------------+
+        |             |             |
+        v             v             v
+  ms-cuentas    ms-intereses   ms-transacciones
+     :8083          :8082           :8081
+        |             |             |
+        +-------------+-------------+
+                      |
+                      v
+                  H2 Server
+                    :9092
+```
 
-       +--------------------------------------+
-       | Infraestructura                     |
-       |                                      |
-       | Config Server :8888                  |
-       | Eureka Server :8761                  |
-       | Auth Server   :9000                  |
-       +--------------------------------------+
+La infraestructura adicional está compuesta por:
+
+```text
++--------------------------------------+
+| Infraestructura Spring Cloud         |
+|                                      |
+| Config Server :8888                  |
+| Eureka Server :8761                  |
+| Auth Server   :9000                  |
++--------------------------------------+
 ```
 
 Todos los componentes desplegados mediante Docker Compose se comunican a través de la red interna:
@@ -77,23 +102,253 @@ banco-network
 
 ---
 
-## 3. Seguridad OAuth 2.0
+## 3. Spring Batch
 
-La solución utiliza **Spring Authorization Server** para emitir tokens JWT mediante el flujo:
+El módulo:
+
+```text
+xyz
+```
+
+implementa los procesos Batch requeridos para migrar el procesamiento legacy hacia Spring Batch.
+
+Los procesos principales corresponden a:
+
+1. Procesamiento de transacciones diarias.
+2. Cálculo de intereses.
+3. Generación de estados de cuenta.
+
+Los Jobs utilizan Steps para realizar las etapas de lectura, procesamiento y escritura de información.
+
+La solución contempla procesamiento de datos, persistencia de resultados y manejo de errores durante la ejecución.
+
+Dentro de Docker Compose, el proceso Batch se ejecuta después de que H2 se encuentra disponible.
+
+Una vez finalizado correctamente, el estado esperado del contenedor Batch es:
+
+```text
+Exited (0)
+```
+
+Esto es normal, ya que corresponde a un proceso que ejecuta sus Jobs y termina, a diferencia de los microservicios que permanecen activos.
+
+---
+
+## 4. Microservicios
+
+La solución separa las principales responsabilidades bancarias en diferentes servicios.
+
+### 4.1 ms-cuentas
+
+Responsable de consultar información de cuentas y participar en operaciones distribuidas relacionadas con débitos.
+
+Entre sus endpoints se encuentran:
+
+```http
+GET /cuentas
+GET /cuentas/{id}
+GET /cuentas/{id}/saldo
+GET /cuentas/{id}/estado-anual
+GET /cuentas/estados
+GET /cuentas/origen-config
+GET /cuentas/salud-dependencia
+GET /interno/ping
+```
+
+También contiene el consumidor JMS utilizado por la Saga de retiros.
+
+---
+
+### 4.2 ms-intereses
+
+Responsable de consultar la información asociada al cálculo de intereses.
+
+Endpoints principales:
+
+```http
+GET /intereses/cuentas
+GET /intereses/cuentas/{id}
+GET /intereses/origen-config
+GET /interno/ping
+```
+
+---
+
+### 4.3 ms-transacciones
+
+Responsable de consultar las transacciones procesadas y gestionar el inicio de retiros.
+
+Endpoints principales:
+
+```http
+GET /transacciones
+GET /transacciones/diarias
+GET /transacciones/diarias?limit={N}
+GET /transacciones/origen-config
+GET /transacciones/retiros/{id}
+POST /transacciones/retiros
+GET /interno/ping
+```
+
+El servicio participa como coordinador del flujo Saga utilizado para los retiros.
+
+---
+
+## 5. Backend for Frontend
+
+El proyecto incorpora el módulo:
+
+```text
+xyz-bff
+```
+
+que implementa un Backend for Frontend especializado para tres canales:
+
+- Web
+- Mobile
+- ATM
+
+El BFF no accede directamente a la base de datos.
+
+Las solicitudes se realizan hacia los servicios backend protegidos mediante OAuth 2.0, utilizando el API Gateway como punto de entrada.
+
+```text
+Cliente
+   |
+   v
+BFF
+   |
+   | OAuth2 Client Credentials
+   v
+API Gateway
+   |
+   v
+Microservicios
+   |
+   v
+Base de datos
+```
+
+El BFF se encuentra protegido mediante HTTPS y utiliza el puerto:
+
+```text
+8443
+```
+
+---
+
+## 6. BFF Web
+
+El canal Web entrega información más completa para interfaces de escritorio.
+
+Autenticación del canal:
+
+```text
+Basic Auth
+
+Usuario: web
+Contraseña: web123
+```
+
+Endpoints principales:
+
+```http
+GET /bff/web/dashboard
+GET /bff/web/transacciones
+GET /bff/web/intereses
+GET /bff/web/cuentas/{id}/estado-anual
+```
+
+Internamente utiliza las credenciales OAuth2 correspondientes al cliente Web para comunicarse con los servicios backend.
+
+---
+
+## 7. BFF Mobile
+
+El canal Mobile entrega respuestas orientadas a aplicaciones móviles y permite limitar la cantidad de información solicitada.
+
+Autenticación:
+
+```text
+Basic Auth
+
+Usuario: mobile
+Contraseña: mobile123
+```
+
+Endpoints principales:
+
+```http
+GET /bff/mobile/home?limit=5
+GET /bff/mobile/cuentas
+GET /bff/mobile/cuentas/{id}/resumen
+```
+
+El canal utiliza un cliente OAuth2 independiente:
+
+```text
+cliente-mobile
+```
+
+---
+
+## 8. BFF ATM
+
+El canal ATM está orientado a operaciones críticas de cajeros automáticos.
+
+Autenticación:
+
+```text
+Basic Auth
+
+Usuario: atm
+Contraseña: atm123
+```
+
+Además, las operaciones asociadas a una cuenta requieren el header:
+
+```http
+X-ATM-PIN: <PIN>
+```
+
+Endpoints:
+
+```http
+GET /bff/atm/ping
+GET /bff/atm/saldo/{id}
+POST /bff/atm/retiro
+```
+
+Ejemplo de solicitud de retiro:
+
+```json
+{
+  "id": 1,
+  "monto": 100
+}
+```
+
+El identificador enviado en las rutas del BFF corresponde al identificador técnico de la cuenta.
+
+El PIN es validado utilizando la información de la cuenta obtenida desde el backend.
+
+---
+
+## 9. Seguridad OAuth 2.0 y JWT
+
+La solución utiliza Spring Authorization Server para emitir tokens JWT mediante el flujo:
 
 ```text
 client_credentials
 ```
 
-Los microservicios y el API Gateway funcionan como **OAuth2 Resource Server**.
+El API Gateway y los microservicios funcionan como OAuth2 Resource Server.
 
-La autorización se realiza mediante scopes, permitiendo restringir las operaciones disponibles para cada cliente.
+La autorización se realiza mediante scopes.
 
 ### Clientes OAuth2
 
 #### cliente-web
-
-Credenciales:
 
 ```text
 Client ID: cliente-web
@@ -108,13 +363,26 @@ transacciones.read
 intereses.read
 ```
 
-Este cliente está orientado a operaciones de consulta.
+---
+
+#### cliente-mobile
+
+```text
+Client ID: cliente-mobile
+Client Secret: mobile-secret
+```
+
+Scopes:
+
+```text
+cuentas.read
+transacciones.read
+intereses.read
+```
 
 ---
 
 #### cliente-atm
-
-Credenciales:
 
 ```text
 Client ID: cliente-atm
@@ -128,13 +396,9 @@ cuentas.read
 retiros.write
 ```
 
-Permite consultar información de cuentas y solicitar retiros.
-
 ---
 
 #### cliente-interno
-
-Credenciales:
 
 ```text
 Client ID: cliente-interno
@@ -147,44 +411,36 @@ Scope:
 servicios.internal
 ```
 
-Se utiliza para proteger operaciones internas entre servicios.
+Este cliente se utiliza para proteger operaciones internas entre servicios.
 
 ---
 
-## 4. Obtención de token
+## 10. Obtención de token
 
-Endpoint:
+Para ejecución local:
 
 ```http
 POST http://localhost:9000/oauth2/token
 ```
 
-Ejemplo para `cliente-web`.
-
 Authorization:
 
 ```text
 Basic Auth
+```
 
+Ejemplo para `cliente-web`:
+
+```text
 Username: cliente-web
 Password: web-secret
 ```
 
-Body (`x-www-form-urlencoded`):
+Body `x-www-form-urlencoded`:
 
 ```text
-grant_type = client_credentials
-scope = cuentas.read transacciones.read intereses.read
-```
-
-Ejemplo para `cliente-atm`:
-
-```text
-Username: cliente-atm
-Password: atm-secret
-
-grant_type = client_credentials
-scope = cuentas.read retiros.write
+grant_type=client_credentials
+scope=cuentas.read transacciones.read intereses.read
 ```
 
 El token obtenido debe enviarse en las solicitudes protegidas:
@@ -195,11 +451,9 @@ Authorization: Bearer <TOKEN>
 
 ---
 
-## 5. Autorización por scopes
+## 11. Autorización por scopes
 
-La seguridad diferencia entre autenticación y autorización.
-
-Ejemplos:
+Los principales permisos son:
 
 | Operación | Scope requerido |
 |---|---|
@@ -209,7 +463,7 @@ Ejemplos:
 | POST `/transacciones/retiros` | `retiros.write` |
 | `/interno/**` | `servicios.internal` |
 
-Esto permite obtener diferentes respuestas dependiendo de los permisos del cliente:
+La separación de permisos permite comprobar diferentes escenarios:
 
 ```text
 200 OK
@@ -221,44 +475,35 @@ Solicitud autenticada y autorizada.
 401 Unauthorized
 ```
 
-Solicitud sin un token válido.
+Solicitud sin credenciales válidas.
 
 ```text
 403 Forbidden
 ```
 
-Token válido, pero sin el scope necesario para acceder al recurso.
+Cliente autenticado, pero sin permisos suficientes para ejecutar la operación.
 
-Por ejemplo, `cliente-web` puede consultar transacciones, pero no puede ejecutar:
+Por ejemplo, `cliente-web` puede consultar transacciones, pero no puede ejecutar retiros debido a que no posee:
 
-```http
-POST /transacciones/retiros
+```text
+retiros.write
 ```
-
-debido a que no posee `retiros.write`.
 
 ---
 
-## 6. Spring Cloud Config
+## 12. Spring Cloud Config
 
-La configuración de los microservicios se encuentra centralizada mediante **Spring Cloud Config Server**.
+Las configuraciones se centralizan mediante Spring Cloud Config Server.
 
-Directorio:
+El repositorio de configuración se encuentra en:
 
 ```text
 config-repo/
 ```
 
-Se mantienen configuraciones diferenciadas para ejecución local y Docker.
+La solución diferencia entre direcciones utilizadas en ejecución local y nombres de servicio utilizados dentro de Docker.
 
-Ejemplo de ejecución local:
-
-```text
-http://localhost:9000
-http://localhost:8761
-```
-
-En Docker se utilizan los nombres de los servicios dentro de la red:
+Ejemplos dentro de Docker:
 
 ```text
 http://auth-server:9000
@@ -267,31 +512,33 @@ http://config-server:8888
 jdbc:h2:tcp://h2:9092/bankxyz
 ```
 
-Esto permite ejecutar la misma solución correctamente en ambos entornos.
+Esto permite mantener centralizadas las configuraciones necesarias para los microservicios.
 
 ---
 
-## 7. Eureka Server
+## 13. Eureka Server
 
-Los microservicios utilizan **Netflix Eureka** para registro y descubrimiento de servicios.
+Netflix Eureka permite registrar y descubrir dinámicamente los servicios.
 
-Dashboard:
+En ejecución local:
 
 ```text
 http://localhost:8761
 ```
 
-Dentro del entorno Docker, los servicios utilizan:
+Dentro de Docker:
 
 ```text
 http://eureka-server:8761/eureka/
 ```
 
+Los microservicios pueden registrarse en Eureka y utilizar el descubrimiento de servicios dentro de la arquitectura distribuida.
+
 ---
 
-## 8. Resilience4j
+## 14. Resilience4j
 
-La solución implementa **Circuit Breaker** mediante Resilience4j.
+La solución implementa Circuit Breaker mediante Resilience4j para controlar fallos en llamadas entre servicios.
 
 Se utiliza la instancia:
 
@@ -314,10 +561,10 @@ resilience4j:
 En `ms-cuentas` puede comprobarse mediante:
 
 ```http
-GET http://localhost:8080/cuentas/salud-dependencia
+GET /cuentas/salud-dependencia
 ```
 
-Cuando la dependencia responde correctamente se obtiene:
+En funcionamiento normal:
 
 ```json
 {
@@ -326,13 +573,13 @@ Cuando la dependencia responde correctamente se obtiene:
 }
 ```
 
-También es posible provocar deliberadamente un fallo:
+También puede provocarse deliberadamente un fallo:
 
 ```http
-GET http://localhost:8080/cuentas/salud-dependencia?forzarFallo=true
+GET /cuentas/salud-dependencia?forzarFallo=true
 ```
 
-En este caso Resilience4j activa el mecanismo de fallback y el Circuit Breaker cambia de estado:
+El mecanismo de fallback permite obtener una respuesta controlada y comprobar la apertura del circuito:
 
 ```json
 {
@@ -341,31 +588,29 @@ En este caso Resilience4j activa el mecanismo de fallback y el Circuit Breaker c
 }
 ```
 
-De esta forma se evita que un fallo en una dependencia provoque una falla en cascada sobre el resto de la aplicación.
+De esta manera se evita que el fallo de una dependencia produzca una falla en cascada sobre el resto de la solución.
 
 ---
 
-## 9. Comunicación asíncrona con JMS
+## 15. Comunicación asíncrona mediante JMS
 
-La solución utiliza **JMS** para implementar comunicación asíncrona entre `ms-transacciones` y `ms-cuentas`.
-
-El flujo principal corresponde al procesamiento de retiros.
+La solución utiliza JMS para implementar comunicación asíncrona entre:
 
 ```text
 ms-transacciones
-       |
-       | cuentas.debitar
-       v
-     JMS
-       |
-       v
-ms-cuentas
-       |
-       | cuentas.debitar.respuesta
-       v
-     JMS
-       |
-       v
+        |
+        | cuentas.debitar
+        v
+       JMS
+        |
+        v
+   ms-cuentas
+        |
+        | cuentas.debitar.respuesta
+        v
+       JMS
+        |
+        v
 ms-transacciones
 ```
 
@@ -377,153 +622,115 @@ cuentas.debitar.respuesta
 cuentas.compensar
 ```
 
-`ms-transacciones` publica eventos mediante `JmsTemplate`, mientras que los consumidores utilizan `@JmsListener`.
+`ms-transacciones` publica los eventos correspondientes al retiro y `ms-cuentas` consume las solicitudes de débito.
+
+Los consumidores utilizan:
+
+```text
+@JmsListener
+```
+
+mientras que la publicación de mensajes se realiza mediante:
+
+```text
+JmsTemplate
+```
 
 ---
 
-## 10. Saga de retiros
+## 16. Saga de retiros
 
-Los retiros utilizan un patrón **Saga** basado en eventos JMS.
+Los retiros utilizan un patrón Saga basado en eventos JMS.
 
-Endpoint:
-
-```http
-POST http://localhost:8080/transacciones/retiros
-```
-
-Ejemplo:
-
-```json
-{
-  "cuentaId": 1,
-  "monto": 1000,
-  "simularFallo": false,
-  "simularDuplicado": false
-}
-```
-
-La operación requiere:
-
-```text
-retiros.write
-```
-
-### Retiro exitoso
-
-Flujo:
+El flujo de un retiro exitoso es:
 
 ```text
 Solicitud de retiro
-       |
-       v
-PENDIENTE
-       |
-       | cuentas.debitar
-       v
-ms-cuentas
-       |
-       | débito realizado
-       v
+        |
+        v
+    PENDIENTE
+        |
+        | cuentas.debitar
+        v
+   ms-cuentas
+        |
+        | débito OK
+        v
 cuentas.debitar.respuesta
-       |
-       v
-CONFIRMADO
+        |
+        v
+    CONFIRMADO
 ```
 
-El estado final comprobado es:
+La ejecución realizada en AWS permitió comprobar la trazabilidad completa mediante un mismo `eventId`.
+
+Ejemplo de evidencia obtenida:
 
 ```text
-CONFIRMADO
+ms-transacciones:
+SAGA cola=cuentas.debitar
+cuentaId=1
+monto=100
+
+ms-cuentas:
+SAGA cola=cuentas.debitar
+resultado=...;6970.00;OK
+
+ms-transacciones:
+SAGA cola=cuentas.debitar.respuesta
+estado=CONFIRMADO
 ```
 
-### Compensación
+Esto permite comprobar que el retiro no corresponde únicamente a una respuesta HTTP, sino que existe procesamiento asíncrono entre los microservicios.
 
-También puede simularse un fallo posterior al débito:
+---
 
-```json
-{
-  "cuentaId": 1,
-  "monto": 500,
-  "simularFallo": true,
-  "simularDuplicado": false
-}
-```
+## 17. Compensación e idempotencia
 
-En este escenario:
+La Saga contempla compensación en caso de producirse un fallo después de realizar un débito.
+
+Flujo:
 
 ```text
 Débito
   |
   v
-Fallo simulado
+Fallo
   |
   v
 COMPENSANDO
   |
   | cuentas.compensar
   v
-Compensación de la operación
+Compensación
   |
   v
 COMPENSADO
 ```
 
-El mecanismo permite revertir el cambio realizado previamente y mantener la consistencia entre los microservicios.
+Además, la comunicación JMS contempla el manejo de mensajes duplicados.
 
----
-
-## 11. Idempotencia
-
-La comunicación JMS contempla mensajes duplicados.
-
-Los eventos procesados se registran mediante un identificador único:
+Los eventos procesados se registran mediante:
 
 ```text
 event_id
 ```
 
-La tabla:
+en la tabla:
 
 ```text
 eventos_procesados
 ```
 
-utiliza dicho identificador como clave primaria.
-
-Si un mismo evento vuelve a ser recibido, se detecta como:
-
-```text
-DUPLICADO
-```
-
-evitando ejecutar dos veces la misma operación.
+Esto permite detectar eventos previamente procesados y evitar que una misma operación sea aplicada más de una vez.
 
 ---
 
-## 12. Docker
+## 18. Docker
 
-Cada aplicación cuenta con su correspondiente `Dockerfile`.
+Los componentes de la solución cuentan con Dockerfiles para generar sus respectivas imágenes.
 
-Las imágenes utilizan:
-
-```dockerfile
-FROM eclipse-temurin:17-jre
-```
-
-Los JAR se incorporan utilizando un argumento de construcción:
-
-```dockerfile
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
-```
-
-Ejemplo de ejecución:
-
-```dockerfile
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-```
-
-El proyecto contiene imágenes para los principales componentes:
+Entre los componentes contenerizados se encuentran:
 
 ```text
 api-gateway
@@ -535,27 +742,36 @@ ms-cuentas
 ms-intereses
 ms-transacciones
 xyz
+xyz-bff
 ```
+
+La contenerización permite mantener un entorno reproducible para la ejecución local y el despliegue en AWS.
 
 ---
 
-## 13. Docker Compose
+## 19. Docker Compose
 
-La infraestructura completa se orquesta mediante:
+Para desarrollo y ejecución local se utiliza:
 
 ```text
 docker-compose.yml
 ```
 
-Se utiliza una red interna:
+Para el despliegue basado en imágenes publicadas se utiliza:
 
-```yaml
-networks:
-  banco-network:
-    driver: bridge
+```text
+docker-compose.prod.yml
 ```
 
-Los servicios se comunican utilizando sus nombres dentro de Docker, por ejemplo:
+La solución utiliza la red:
+
+```text
+banco-network
+```
+
+Dentro de esta red los componentes pueden comunicarse utilizando sus nombres de servicio.
+
+Ejemplos:
 
 ```text
 auth-server:9000
@@ -565,191 +781,223 @@ h2:9092
 ms-cuentas:8083
 ms-intereses:8082
 ms-transacciones:8081
+api-gateway:8080
 ```
 
-También se utilizan `healthcheck` y `depends_on` para controlar el orden de inicialización.
+Se utilizan además `healthcheck`, `depends_on` y políticas de reinicio para controlar la inicialización de la infraestructura.
 
-El flujo de inicio es:
+---
+
+## 20. Despliegue en AWS
+
+La solución fue desplegada en una instancia Amazon EC2.
+
+El servidor ejecuta:
+
+- Amazon Linux 2023.
+- Docker.
+- Docker Compose.
+- Las imágenes generadas por el proyecto.
+- La infraestructura completa del Banco XYZ.
+
+El despliegue permite ejecutar en AWS:
 
 ```text
-H2
- |
- v
-Batch
- |
- v
-Config Server / Eureka / Auth Server
- |
- v
-Microservicios
- |
- v
+H2 Server
+Spring Batch
+Config Server
+Eureka Server
+Auth Server
+ms-cuentas
+ms-intereses
+ms-transacciones
 API Gateway
+xyz-bff
 ```
 
-El proceso Batch finaliza después de inicializar y procesar los datos, por lo que su estado esperado después de una ejecución correcta es:
+La configuración de red de AWS permite exponer únicamente los puertos necesarios para las pruebas externas.
+
+Los servicios internos permanecen comunicados mediante la red Docker.
+
+Para evitar depender de una dirección específica, la documentación representa la dirección pública de la instancia como:
 
 ```text
-Exited (0)
+<EC2_PUBLIC_IP>
 ```
 
----
-
-## 14. Compilación
-
-Desde la raíz del proyecto:
-
-```powershell
-.\mvnw.cmd clean package -DskipTests
-```
-
-El módulo Batch `xyz` se compila de forma independiente:
-
-```powershell
-cd .\xyz
-..\mvnw.cmd clean package -DskipTests
-cd ..
-```
-
----
-
-## 15. Construcción de imágenes Docker
-
-Con Docker Desktop iniciado:
-
-```powershell
-docker compose build
-```
-
----
-
-## 16. Ejecución con Docker Compose
-
-Para iniciar la infraestructura:
-
-```powershell
-docker compose up -d
-```
-
-Para comprobar el estado:
-
-```powershell
-docker compose ps -a
-```
-
-El resultado esperado es que los servicios permanezcan `Up` y que Batch finalice correctamente con:
+Por ejemplo:
 
 ```text
-Exited (0)
-```
-
-Para detener y eliminar los contenedores:
-
-```powershell
-docker compose down
+http://<EC2_PUBLIC_IP>:9000
+http://<EC2_PUBLIC_IP>:8080
+https://<EC2_PUBLIC_IP>:8443
 ```
 
 ---
 
-## 17. Endpoints principales
+## 21. CI/CD con GitHub Actions
 
-### Cuentas
+El proyecto implementa un pipeline de integración y despliegue continuo mediante GitHub Actions.
 
-```http
-GET /cuentas/estados
-GET /cuentas/origen-config
-GET /cuentas/salud-dependencia
-```
+El workflow se ejecuta a partir de cambios enviados a la rama principal.
 
-### Intereses
-
-```http
-GET /intereses/cuentas
-GET /intereses/origen-config
-```
-
-### Transacciones
-
-```http
-GET /transacciones
-GET /transacciones/origen-config
-GET /transacciones/retiros/{id}
-POST /transacciones/retiros
-```
-
-Todas las solicitudes externas se realizan preferentemente mediante:
+El flujo general es:
 
 ```text
-http://localhost:8080
+Push a main
+     |
+     v
+GitHub Actions
+     |
+     +--> Configuración JDK 17
+     |
+     +--> Compilación Maven
+     |
+     +--> Construcción de imágenes Docker
+     |
+     +--> Publicación en Docker Hub
+     |
+     +--> Conexión SSH con EC2
+     |
+     +--> docker compose pull
+     |
+     +--> docker compose up -d
+     |
+     v
+Aplicación actualizada en AWS
 ```
 
-correspondiente al API Gateway.
+Las credenciales necesarias para el pipeline se gestionan mediante GitHub Secrets.
+
+Entre ellas:
+
+```text
+DOCKERHUB_USERNAME
+DOCKERHUB_TOKEN
+EC2_HOST
+EC2_SSH_KEY
+USER_SERVER
+```
+
+Las imágenes Docker se publican en Docker Hub y posteriormente son descargadas desde la instancia EC2 mediante `docker compose pull`.
+
+De esta manera, el despliegue no requiere compilar manualmente el proyecto dentro del servidor.
 
 ---
 
-## 18. Pruebas realizadas
+## 22. Pruebas realizadas
 
-Durante la ejecución de la solución se comprobaron los siguientes escenarios:
+Durante el desarrollo se realizaron pruebas locales, mediante Docker y sobre el entorno desplegado en AWS.
 
 ### OAuth 2.0
+
+Se comprobó:
 
 - Obtención de JWT mediante `client_credentials`.
 - Acceso autorizado con respuesta `200 OK`.
 - Acceso sin autenticación con respuesta `401 Unauthorized`.
 - Acceso con token válido pero scope insuficiente con respuesta `403 Forbidden`.
-- Separación de permisos entre `cliente-web` y `cliente-atm`.
+- Separación de permisos entre los diferentes clientes OAuth2.
 
-### Docker y Docker Compose
+### Microservicios
 
-- Construcción de las imágenes Docker.
-- Inicio de los componentes mediante Docker Compose.
-- Ejecución de H2 Server.
-- Ejecución satisfactoria del proceso Batch.
-- Config Server operativo.
-- Eureka Server operativo.
-- Auth Server operativo.
-- Microservicios operativos.
-- API Gateway operativo.
+Se comprobaron consultas mediante el API Gateway para:
 
-### Resilience4j
+```http
+GET /cuentas/estados
+GET /transacciones/diarias
+GET /intereses/cuentas
+```
 
-- Circuit Breaker en estado `CLOSED` durante funcionamiento normal.
-- Simulación controlada de fallo.
-- Activación de fallback.
-- Circuit Breaker en estado `OPEN`.
+obteniendo respuestas exitosas.
+
+### Backend for Frontend
+
+Se comprobaron los canales:
+
+```text
+Web
+Mobile
+ATM
+```
+
+incluyendo autenticación independiente por canal.
+
+### ATM
+
+Se comprobaron:
+
+- Consulta de saldo.
+- Validación de PIN.
+- Rechazo de PIN incorrecto.
+- Solicitud de retiro.
+- Respuesta HTTP `202 Accepted`.
+- Actualización posterior del saldo.
 
 ### JMS y Saga
 
-- Publicación de retiro mediante JMS.
-- Procesamiento del débito en `ms-cuentas`.
-- Respuesta asíncrona hacia `ms-transacciones`.
-- Retiro finalizado en estado `CONFIRMADO`.
-- Simulación de fallo posterior.
-- Publicación del evento de compensación.
-- Retiro finalizado en estado `COMPENSADO`.
+Se comprobó:
+
+- Publicación de `cuentas.debitar`.
+- Consumo del evento en `ms-cuentas`.
+- Procesamiento del débito.
+- Publicación de `cuentas.debitar.respuesta`.
+- Recepción de la respuesta en `ms-transacciones`.
+- Finalización del retiro en estado `CONFIRMADO`.
+- Compensación ante fallos controlados.
+- Manejo de eventos duplicados.
+
+### Resilience4j
+
+Se comprobó:
+
+- Circuit Breaker en estado `CLOSED`.
+- Simulación de fallo.
+- Activación del fallback.
+- Circuit Breaker en estado `OPEN`.
+
+### Docker
+
+Se comprobó:
+
+- Construcción de imágenes.
+- Inicio coordinado mediante Docker Compose.
+- Healthchecks.
+- Ejecución de Spring Batch.
+- Ejecución de los microservicios.
+- Ejecución del BFF.
+- Ejecución del API Gateway.
+
+### AWS
+
+Se comprobó desde un cliente externo:
+
+- Obtención de token OAuth2 desde Auth Server.
+- Consumo de servicios mediante API Gateway.
+- Acceso al BFF mediante HTTPS.
+- Consulta de saldo ATM.
+- Ejecución de retiro ATM.
+- Procesamiento JMS/Saga entre microservicios.
+- Persistencia del nuevo saldo.
+
+### CI/CD
+
+Se comprobó:
+
+- Ejecución exitosa del workflow.
+- Compilación del proyecto.
+- Construcción de imágenes.
+- Publicación en Docker Hub.
+- Transferencia de configuración hacia EC2.
+- Actualización automática de los contenedores en AWS.
 
 ---
 
-## 19. Evidencias
-
-Las evidencias de ejecución se encuentran incorporadas en la entrega e incluyen capturas de:
-
-1. Contenedores ejecutándose mediante Docker Compose.
-2. Obtención de token OAuth 2.0.
-3. Solicitud autorizada con respuesta `200 OK`.
-4. Solicitud sin autorización con respuesta `401 Unauthorized`.
-5. Solicitud con scope insuficiente con respuesta `403 Forbidden`.
-6. Circuit Breaker en funcionamiento normal (`CLOSED`).
-7. Activación del fallback y Circuit Breaker (`OPEN`).
-8. Saga JMS finalizada en estado `CONFIRMADO`.
-9. Saga JMS con compensación finalizada en estado `COMPENSADO`.
-
----
-
-## 20. Tecnologías utilizadas
+## 23. Tecnologías utilizadas
 
 - Java 17
 - Spring Boot
+- Spring Batch
 - Spring Security
 - Spring Authorization Server
 - OAuth 2.0
@@ -762,17 +1010,26 @@ Las evidencias de ejecución se encuentran incorporadas en la entrega e incluyen
 - Spring JMS
 - H2 Database
 - Spring JDBC
-- Spring Batch
 - Maven
 - Docker
 - Docker Compose
+- Docker Hub
+- GitHub
+- GitHub Actions
+- AWS EC2
+- HTTPS / TLS
+- Postman
 
 ---
 
-## 21. Estructura general
+## 24. Estructura general del proyecto
 
 ```text
 Backend/
+|
+|-- .github/
+|   `-- workflows/
+|       `-- deploy.yml
 |
 |-- api-gateway/
 |-- auth-server/
@@ -784,17 +1041,114 @@ Backend/
 |-- ms-intereses/
 |-- ms-transacciones/
 |-- xyz/
+|-- xyz-bff/
+|
 |-- docker-compose.yml
+|-- docker-compose.prod.yml
 |-- pom.xml
 |-- mvnw
 |-- mvnw.cmd
-`-- README.md
+|-- README.md
+|-- instrucciones.md
+`-- despliegue.md
 ```
 
 ---
 
-## 22. Resultado
+## 25. Ejecución local
 
-La solución permite ejecutar una arquitectura de microservicios integrada y contenerizada, incorporando autenticación y autorización OAuth 2.0, configuración centralizada, descubrimiento de servicios, resiliencia ante fallos, comunicación asíncrona mediante JMS y una Saga con mecanismo de compensación.
+Para compilar el proyecto desde la raíz:
 
-La infraestructura puede levantarse de forma coordinada mediante Docker Compose y los servicios pueden consumirse a través del API Gateway.
+```powershell
+.\mvnw.cmd clean package -DskipTests
+```
+
+El módulo Batch puede compilarse independientemente:
+
+```powershell
+cd .\xyz
+..\mvnw.cmd clean package -DskipTests
+cd ..
+```
+
+Construir las imágenes:
+
+```powershell
+docker compose build
+```
+
+Iniciar la infraestructura:
+
+```powershell
+docker compose up -d
+```
+
+Comprobar el estado:
+
+```powershell
+docker compose ps -a
+```
+
+Detener la infraestructura:
+
+```powershell
+docker compose down
+```
+
+Para instrucciones detalladas de ejecución y pruebas, consultar:
+
+```text
+instrucciones.md
+```
+
+---
+
+## 26. Documentación adicional
+
+El repositorio incluye documentación complementaria para facilitar la ejecución, validación y despliegue de la solución.
+
+### Instrucciones de ejecución y pruebas
+
+Consultar [`instrucciones.md`](instrucciones.md).
+
+Este documento contiene el paso a paso para ejecutar la solución y comprobar sus principales componentes, incluyendo:
+
+- Spring Batch.
+- Microservicios.
+- OAuth 2.0 y autorización mediante scopes.
+- API Gateway.
+- BFF Web, Mobile y ATM.
+- Resilience4j.
+- JMS y patrón Saga.
+- Ejecución mediante Docker Compose.
+
+### Despliegue en AWS
+
+Consultar [`despliegue.md`](despliegue.md).
+
+Este documento describe el proceso utilizado para desplegar la solución en AWS, incluyendo:
+
+- Preparación de la instancia EC2.
+- Instalación y configuración de Docker.
+- Docker Compose para producción.
+- Publicación de imágenes en Docker Hub.
+- Configuración de GitHub Secrets.
+- Pipeline CI/CD mediante GitHub Actions.
+- Despliegue automático hacia EC2.
+- Verificación de los servicios desplegados.
+
+---
+
+## 27. Resultado final
+
+La solución desarrollada permite modernizar los principales componentes del sistema bancario legacy mediante una arquitectura distribuida basada en Spring.
+
+Spring Batch permite procesar la información bancaria requerida, mientras que los microservicios separan las responsabilidades de cuentas, intereses y transacciones.
+
+El patrón Backend for Frontend proporciona interfaces específicas para Web, Mobile y ATM, evitando el acceso directo de estos canales a la base de datos y utilizando servicios backend protegidos.
+
+OAuth 2.0, JWT y la autorización mediante scopes permiten separar los permisos de los diferentes clientes y proteger tanto las operaciones externas como internas.
+
+Resilience4j proporciona mecanismos de tolerancia a fallos y JMS permite implementar comunicación asíncrona entre los microservicios. Sobre esta comunicación se implementa una Saga para mantener la consistencia durante el procesamiento distribuido de retiros.
+
+Finalmente, Docker y Docker Compose permiten ejecutar la infraestructura de forma reproducible, mientras que GitHub Actions, Docker Hub y AWS EC2 permiten automatizar la construcción, publicación y despliegue de la solución en un entorno de nube.
