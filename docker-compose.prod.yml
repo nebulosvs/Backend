@@ -1,0 +1,207 @@
+services:
+
+  # ============================================================
+  # BASE DE DATOS H2
+  # ============================================================
+
+  h2:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-h2:latest
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9092'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - banco-network
+
+  # ============================================================
+  # SPRING BATCH
+  # ============================================================
+
+  batch:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-batch:latest
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:h2:tcp://h2:9092/bankxyz;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
+    depends_on:
+      h2:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - banco-network
+
+  # ============================================================
+  # CONFIG SERVER
+  # ============================================================
+
+  config-server:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-config-server:latest
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8888'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 40s
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # EUREKA SERVER
+  # ============================================================
+
+  eureka-server:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-eureka-server:latest
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8761'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 40s
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # AUTHORIZATION SERVER
+  # ============================================================
+
+  auth-server:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-auth-server:latest
+    environment:
+      BANK_OAUTH_ISSUER: "http://auth-server:9000"
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 40s
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # MICROSERVICIO TRANSACCIONES
+  # ============================================================
+
+  ms-transacciones:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-ms-transacciones:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONFIG_SERVER_URL: "http://config-server:8888"
+    ports:
+      - "8081:8081"
+      - "61616:61616"
+    depends_on:
+      batch:
+        condition: service_completed_successfully
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # MICROSERVICIO INTERESES
+  # ============================================================
+
+  ms-intereses:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-ms-intereses:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONFIG_SERVER_URL: "http://config-server:8888"
+    ports:
+      - "8082:8082"
+    depends_on:
+      batch:
+        condition: service_completed_successfully
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # MICROSERVICIO CUENTAS
+  # ============================================================
+
+  ms-cuentas:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-ms-cuentas:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      CONFIG_SERVER_URL: "http://config-server:8888"
+    ports:
+      - "8083:8083"
+    depends_on:
+      ms-transacciones:
+        condition: service_started
+      batch:
+        condition: service_completed_successfully
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # API GATEWAY
+  # ============================================================
+
+  api-gateway:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-api-gateway:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ms-transacciones
+      - ms-intereses
+      - ms-cuentas
+    restart: on-failure
+    networks:
+      - banco-network
+
+  # ============================================================
+  # BFF
+  # ============================================================
+
+  xyz-bff:
+    image: ${DOCKERHUB_USERNAME}/banco-xyz-bff:latest
+    environment:
+      BANK_BACKEND_BASE_URL: "http://api-gateway:8080"
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_BANK_AUTH_TOKEN_URI: "http://auth-server:9000/oauth2/token"
+    ports:
+      - "8443:8443"
+    depends_on:
+      auth-server:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
+    restart: on-failure
+    networks:
+      - banco-network
+
+networks:
+  banco-network:
+    driver: bridge

@@ -1,0 +1,199 @@
+name: Build and Deploy Banco XYZ
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: banco-xyz-production
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ========================================================
+      # CHECKOUT
+      # ========================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ========================================================
+      # DOCKER HUB
+      # ========================================================
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ========================================================
+      # BUILD IMAGES
+      # ========================================================
+
+      - name: Build H2 image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-h2:latest" \
+            ./h2-server
+
+      - name: Build Batch image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-batch:latest" \
+            ./xyz
+
+      - name: Build Config Server image
+        run: |
+          docker build \
+            -f config-server/Dockerfile \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-config-server:latest" \
+            .
+
+      - name: Build Eureka Server image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-eureka-server:latest" \
+            ./eureka-server
+
+      - name: Build Auth Server image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-auth-server:latest" \
+            ./auth-server
+
+      - name: Build Transacciones image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-transacciones:latest" \
+            ./ms-transacciones
+
+      - name: Build Intereses image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-intereses:latest" \
+            ./ms-intereses
+
+      - name: Build Cuentas image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-cuentas:latest" \
+            ./ms-cuentas
+
+      - name: Build API Gateway image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-api-gateway:latest" \
+            ./api-gateway
+
+      - name: Build BFF image
+        run: |
+          docker build \
+            -t "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-bff:latest" \
+            ./xyz-bff
+
+      # ========================================================
+      # PUSH IMAGES
+      # ========================================================
+
+      - name: Push images to Docker Hub
+        run: |
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-h2:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-batch:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-config-server:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-eureka-server:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-auth-server:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-transacciones:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-intereses:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-ms-cuentas:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-api-gateway:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/banco-xyz-bff:latest"
+
+      # ========================================================
+      # SSH
+      # ========================================================
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # ========================================================
+      # PREPARE EC2
+      # ========================================================
+
+      - name: Create deployment directory on EC2
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }}" \
+            "mkdir -p /home/ec2-user/banco-xyz"
+
+      - name: Copy production Compose to EC2
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            docker-compose.prod.yml \
+            "${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/banco-xyz/docker-compose.yml"
+
+      - name: Create deployment environment
+        run: |
+          printf 'DOCKERHUB_USERNAME=%s\n' \
+            "${{ secrets.DOCKERHUB_USERNAME }}" > deployment.env
+
+          chmod 600 deployment.env
+
+      - name: Copy environment file to EC2
+        run: |
+          scp \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            deployment.env \
+            "${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }}:/home/ec2-user/banco-xyz/.env"
+
+      # ========================================================
+      # DEPLOY
+      # ========================================================
+
+      - name: Deploy on EC2
+        run: |
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "${{ secrets.USER_SERVER }}@${{ secrets.EC2_HOST }}" << 'EOF'
+
+            set -e
+
+            cd /home/ec2-user/banco-xyz
+
+            chmod 600 .env
+
+            echo '${{ secrets.DOCKERHUB_TOKEN }}' |
+              docker login \
+                -u '${{ secrets.DOCKERHUB_USERNAME }}' \
+                --password-stdin
+
+            docker compose pull
+
+            docker compose up -d --remove-orphans
+
+            docker image prune -f
+
+            echo "Estado de los contenedores:"
+            docker compose ps
+
+          EOF
